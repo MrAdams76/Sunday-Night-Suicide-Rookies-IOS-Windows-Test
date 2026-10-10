@@ -434,7 +434,7 @@ jobs:
                   #if MODS_ALLOWED
                   Paths.pushGlobalMods();
                   #end
-                  var bg = new FlxSprite().loadGraphic(Paths.image('menuBG'));
+                  if (FlxG.sound.music == null || !FlxG.sound.music.playing)\n                      FlxG.sound.playMusic(Paths.music('freakyMenu'), 0.8);\n                  var bg = new FlxSprite().loadGraphic(Paths.image('menuBG'));
                   bg.setGraphicSize(FlxG.width, FlxG.height);
                   bg.updateHitbox();
                   add(bg);
@@ -444,14 +444,14 @@ jobs:
                   fire.animation.play('burn');
                   fire.setGraphicSize(FlxG.width, FlxG.height);
                   fire.updateHitbox();
-                  fire.alpha = 0.8;
+                  fire.alpha = 0.45;
                   add(fire);
                   items = new FlxTypedGroup<FlxSprite>();
                   add(items);
                   for (i in 0...entries.length)
                   {
                       var sprite = new FlxSprite().loadGraphic(Paths.image('mainmenu/' + entries[i]));
-                      sprite.setGraphicSize(Std.int(Math.min(sprite.width, FlxG.width * 0.56)));
+                      // Original SNS button PNGs are full-screen transparent canvases.\n                      // All four must share the same screen coordinates.\n                      sprite.setGraphicSize(FlxG.width, FlxG.height);
                       sprite.updateHitbox();
                       sprite.screenCenter(X);
                       sprite.y = 140 + i * 125;
@@ -471,7 +471,7 @@ jobs:
                   for (sprite in items.members)
                       if (sprite != null) {
                           sprite.alpha = sprite.ID == curSelected ? 1 : 0.55;
-                          sprite.scale.set(sprite.ID == curSelected ? 1.07 : 1, sprite.ID == curSelected ? 1.07 : 1);
+                          // Scaling full-screen menu canvases crops the buttons.\n                          sprite.scale.set(1, 1);
                       }
               }
 
@@ -544,6 +544,59 @@ jobs:
           print("Cinematic flash/shader assets staged. Actual shader execution and flashing remain runtime-dependent; respect user flashing settings.")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw "Original SNS asset validation failed" }
+
+      - name: Restore original SNS stage scenery and title reel
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          root = Path("engine")
+          mod = root / "mods/Sunday-Night-Suicide"
+          play = root / "source/PlayState.hx"
+          code = play.read_text(encoding="utf-8-sig")
+          marker = "switch (curStage)"
+          if code.count(marker) != 1:
+              raise RuntimeError("PlayState stage switch anchor changed")
+          cases = """
+              case 'randy':
+                  // Original Lunacy scenery: draw behind characters.
+                  add(new BGSprite('stages/randy/sky', -950, -700, 0.4, 0.4));
+                  add(new BGSprite('stages/randy/road', -950, -200, 0.9, 0.9));
+                  add(new BGSprite('stages/randy/fence', -950, -200, 0.9, 0.9));
+                  add(new BGSprite('stages/randy/streetlamp', -950, -200, 0.9, 0.9));
+              case 'alley':
+                  add(new BGSprite('stages/road/bg', -950, -500, 0.8, 0.8));
+                  add(new BGSprite('stages/road/road', -950, -200, 1, 1));
+          """
+          for asset in ("stages/randy/sky", "stages/randy/road",
+                        "stages/randy/fence", "stages/randy/streetlamp",
+                        "stages/road/bg", "stages/road/road"):
+              if not (mod / ("images/" + asset + ".png")).is_file():
+                  raise RuntimeError("Missing original stage art: " + asset)
+          code = code.replace(marker + "\\n\\t\\t{", marker + "\\n\\t\\t{" + cases, 1)
+          if "case 'randy':" not in code:
+              raise RuntimeError("Failed to register Lunacy stage")
+          play.write_text(code, encoding="utf-8")
+          # TitleState's original animation uses its titleEnter atlas; force
+          # original SNS asset lookup before the intro is constructed.
+          title = root / "source/TitleState.hx"
+          src = title.read_text(encoding="utf-8-sig")
+          start = "override public function create():Void"
+          if src.count(start) != 1: raise RuntimeError("TitleState create anchor changed")
+          src = src.replace(start, start + """
+          {
+              #if windows
+              Paths.currentModDirectory = 'Sunday-Night-Suicide';
+              #end
+          """, 1)
+          # Keep a single create method opening brace.
+          src = src.replace("""          #end
+          
+          {""", """          #end""", 1)
+          title.write_text(src, encoding="utf-8")
+          print("SNS stage scenery and title asset directory patched")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "SNS scenery/title patch failed" }
 
       - name: Compile Windows game
         shell: pwsh
