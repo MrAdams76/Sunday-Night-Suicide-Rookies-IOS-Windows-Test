@@ -386,8 +386,10 @@ jobs:
           update_anchor = "override function update(elapsed:Float)"
           if update_anchor not in code:
               raise RuntimeError("Title update hook missing")
-          code = code.replace(update_anchor, """override function update(elapsed:Float)
-          {
+          update_signature = "override function update(elapsed:Float)\\n\\t{"
+          if update_signature not in code:
+              raise RuntimeError("Title update signature changed")
+          code = code.replace(update_signature, update_signature + """
               #if windows
               if (snsTitleLogo == null && initialized && logoBl != null)
               {
@@ -403,13 +405,7 @@ jobs:
                   snsTitleLogo.scale.set(1 + 0.025 * Math.sin(Conductor.songPosition / 180),
                                           1 + 0.025 * Math.sin(Conductor.songPosition / 180));
               #end
-          """ + """
-          // SNS_TITLE_UPDATE_BODY
           """, 1)
-          # The update method must not be split into two method bodies:
-          code = code.replace("""          // SNS_TITLE_UPDATE_BODY
-          
-          {""", "", 1)
           title.write_text(code, encoding="utf-8")
 
           menu = root / "source/MainMenuState.hx"
@@ -444,7 +440,7 @@ jobs:
                   add(bg);
                   fire = new FlxSprite(0, 0);
                   fire.frames = Paths.getSparrowAtlas('mainmenu/fire');
-                  fire.animation.addByPrefix('burn', 'fire', 24, true);
+                  fire.animation.addByPrefix('burn', 'idle', 24, true);
                   fire.animation.play('burn');
                   fire.setGraphicSize(FlxG.width, FlxG.height);
                   fire.updateHitbox();
