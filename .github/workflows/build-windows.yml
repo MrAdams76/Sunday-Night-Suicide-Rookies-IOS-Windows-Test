@@ -190,6 +190,64 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw "Windows compatibility patch failed" }
 
+      - name: Port iOS SNS week discovery to Windows
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          p = Path("engine/source/WeekData.hx")
+          code = p.read_text(encoding="utf-8-sig")
+          anchor = "\t\t#end\n\t}\n\n\tprivate static function addWeek("
+          if code.count(anchor) != 1:
+              raise RuntimeError("WeekData discovery anchor changed")
+          addition = """
+                  #if windows
+                  // Windows counterpart of the iOS SNS week registration fallback.
+                  // Discover directly from the packaged mod, not the vanilla weeks list.
+                  var snsRoot:String = Paths.mods("Sunday-Night-Suicide/");
+                  var snsWeeks:String = snsRoot + "weeks/";
+                  if (FileSystem.exists(snsWeeks) && FileSystem.isDirectory(snsWeeks))
+                  {
+                      for (snsFile in FileSystem.readDirectory(snsWeeks))
+                      {
+                          if (StringTools.endsWith(snsFile, ".json"))
+                          {
+                              var snsName:String = snsFile.substr(0, snsFile.length - 5);
+                              addWeek(snsName, snsWeeks + snsFile, snsRoot, originalLength, originalLength);
+                          }
+                      }
+                      // Show only the SNS songs when its charts are installed.
+                      if (FileSystem.exists(snsRoot + "data/melancholy/melancholy.json"))
+                      {
+                          var snsOnly:Array<String> = [];
+                          for (key in weeksList)
+                          {
+                              var candidate = weeksLoaded.get(key);
+                              if (candidate == null || candidate.songs == null) continue;
+                              var found:Bool = false;
+                              for (entry in candidate.songs)
+                              {
+                                  var title:String = Std.string(entry[0]).toLowerCase();
+                                  if (title == "melancholy" || title == "twisted"
+                                      || title == "lunacy" || title == "smile") found = true;
+                              }
+                              if (found) snsOnly.push(key);
+                              else weeksLoaded.remove(key);
+                          }
+                          weeksList = snsOnly;
+                      }
+                      trace("SNS Windows: cwd=" + Sys.getCwd() + " weeks=" + weeksList.join(","));
+                  }
+                  else trace("SNS Windows: missing mod weeks at " + snsWeeks);
+                  #end
+          """
+          # Indentation is cosmetic; retain original conditional compilation boundary.
+          code = code.replace(anchor, addition + anchor, 1)
+          p.write_text(code, encoding="utf-8")
+          print("Windows SNS week registration fallback installed")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "SNS week integration failed" }
+
       - name: Compile Windows game
         shell: pwsh
         working-directory: engine
