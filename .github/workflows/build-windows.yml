@@ -386,7 +386,7 @@ jobs:
           update_anchor = "override function update(elapsed:Float)"
           if update_anchor not in code:
               raise RuntimeError("Title update hook missing")
-          update_signature = "override function update(elapsed:Float)\\n\\t{"
+          update_signature = "override function update(elapsed:Float)" + chr(10) + chr(9) + "{"
           if update_signature not in code:
               raise RuntimeError("Title update signature changed")
           code = code.replace(update_signature, update_signature + """
