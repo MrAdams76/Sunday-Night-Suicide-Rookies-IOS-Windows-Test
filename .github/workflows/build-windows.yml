@@ -38,9 +38,20 @@ jobs:
         run: |
           choco install haxe --yes --no-progress
           if ($LASTEXITCODE -ne 0) { throw "Haxe installation failed" }
-          $env:PATH = "C:\ProgramData\chocolatey\bin;$env:PATH"
+          # Chocolatey installs Neko in a separate directory. Its shim alone
+          # cannot locate std.ndll, which every haxelib command requires.
+          $nekoDll = Get-ChildItem 'C:\ProgramData\chocolatey\lib\neko' -Filter std.ndll -Recurse -File | Select-Object -First 1
+          if (-not $nekoDll) { throw "Neko std.ndll not found after Chocolatey installation" }
+          $nekoDir = $nekoDll.DirectoryName
+          $env:PATH = "$nekoDir;C:\ProgramData\chocolatey\bin;$env:PATH"
+          $env:NEKOPATH = $nekoDir
+          $nekoDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "NEKOPATH=$nekoDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Neko runtime directory: $nekoDir"
           haxe --version
+          neko -version
           haxelib setup "$env:USERPROFILE\haxelib"
+          if ($LASTEXITCODE -ne 0) { throw "haxelib setup failed: check Neko runtime" }
           haxelib install lime 8.2.2 --quiet
           haxelib install openfl 9.4.1 --quiet
           haxelib install flixel 4.11.0 --quiet
