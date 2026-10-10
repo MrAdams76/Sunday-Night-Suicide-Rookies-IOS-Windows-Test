@@ -353,6 +353,161 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw "SNS standalone Freeplay patch failed" }
 
+      - name: Install SNS animated title and custom main menu
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          root = Path("engine")
+          mod = root / "mods/Sunday-Night-Suicide"
+          required = ["images/logo-sns.png", "images/mainmenu/fire.png",
+                      "images/mainmenu/fire.xml", "images/mainmenu/story.png",
+                      "images/mainmenu/freeplay.png", "images/mainmenu/credits.png",
+                      "images/mainmenu/settings.png"]
+          for rel in required:
+              if not (mod / rel).is_file():
+                  raise RuntimeError("Original SNS menu art missing: " + rel)
+          # Keep Psych Engine's animated title-enter and logo-bump code.
+          # Replace the displayed logo art with the original SNS logo, while
+          # retaining its existing beat animation and title state flow.
+          title = root / "source/TitleState.hx"
+          code = title.read_text(encoding="utf-8-sig")
+          old = "Paths.getSparrowAtlas('logoBumpin')"
+          if old not in code:
+              raise RuntimeError("Upstream animated title atlas hook changed")
+          # Keep the original animated atlas; overlay SNS branding instead.
+          title_hook = "function startIntro()"
+          if code.count(title_hook) != 1:
+              raise RuntimeError("Title intro hook changed")
+          code = code.replace(title_hook, """var snsTitleLogo:FlxSprite;
+          """ + title_hook, 1)
+          # Add the logo after title intro's existing objects have been created,
+          # using the existing title's update cycle to keep it visible.
+          update_anchor = "override function update(elapsed:Float)"
+          if update_anchor not in code:
+              raise RuntimeError("Title update hook missing")
+          code = code.replace(update_anchor, """override function update(elapsed:Float)
+          {
+              #if windows
+              if (snsTitleLogo == null && initialized && logoBl != null)
+              {
+                  snsTitleLogo = new FlxSprite().loadGraphic(Paths.image('logo-sns'));
+                  snsTitleLogo.setGraphicSize(Std.int(FlxG.width * 0.60));
+                  snsTitleLogo.updateHitbox();
+                  snsTitleLogo.screenCenter(X);
+                  snsTitleLogo.y = 40;
+                  add(snsTitleLogo);
+                  logoBl.visible = false;
+              }
+              if (snsTitleLogo != null && FlxG.sound.music != null)
+                  snsTitleLogo.scale.set(1 + 0.025 * Math.sin(Conductor.songPosition / 180),
+                                          1 + 0.025 * Math.sin(Conductor.songPosition / 180));
+              #end
+          """ + """
+          // SNS_TITLE_UPDATE_BODY
+          """, 1)
+          # The update method must not be split into two method bodies:
+          code = code.replace("""          // SNS_TITLE_UPDATE_BODY
+          
+          {""", "", 1)
+          title.write_text(code, encoding="utf-8")
+
+          menu = root / "source/MainMenuState.hx"
+          menu.write_text("""package;
+
+          import flixel.FlxG;
+          import flixel.FlxSprite;
+          import flixel.group.FlxGroup.FlxTypedGroup;
+          import flixel.graphics.frames.FlxAtlasFrames;
+          import flixel.text.FlxText;
+          import flixel.util.FlxColor;
+          import flixel.tweens.FlxTween;
+
+          class MainMenuState extends MusicBeatState
+          {
+              public static var psychEngineVersion:String = '0.6.3';
+              public static var curSelected:Int = 0;
+              var entries:Array<String> = ['story', 'freeplay', 'credits', 'settings'];
+              var items:FlxTypedGroup<FlxSprite>;
+              var fire:FlxSprite;
+              var busy:Bool = false;
+
+              override function create()
+              {
+                  Paths.currentModDirectory = 'Sunday-Night-Suicide';
+                  #if MODS_ALLOWED
+                  Paths.pushGlobalMods();
+                  #end
+                  var bg = new FlxSprite().loadGraphic(Paths.image('menuBG'));
+                  bg.setGraphicSize(FlxG.width, FlxG.height);
+                  bg.updateHitbox();
+                  add(bg);
+                  fire = new FlxSprite(0, 0);
+                  fire.frames = Paths.getSparrowAtlas('mainmenu/fire');
+                  fire.animation.addByPrefix('burn', 'fire', 24, true);
+                  fire.animation.play('burn');
+                  fire.setGraphicSize(FlxG.width, FlxG.height);
+                  fire.updateHitbox();
+                  fire.alpha = 0.8;
+                  add(fire);
+                  items = new FlxTypedGroup<FlxSprite>();
+                  add(items);
+                  for (i in 0...entries.length)
+                  {
+                      var sprite = new FlxSprite().loadGraphic(Paths.image('mainmenu/' + entries[i]));
+                      sprite.setGraphicSize(Std.int(Math.min(sprite.width, FlxG.width * 0.56)));
+                      sprite.updateHitbox();
+                      sprite.screenCenter(X);
+                      sprite.y = 140 + i * 125;
+                      sprite.ID = i;
+                      items.add(sprite);
+                  }
+                  var caption = new FlxText(0, FlxG.height - 30, FlxG.width, 'Sunday Night Suicide: Rookies Edition V1', 16);
+                  caption.alignment = CENTER;
+                  add(caption);
+                  select(0);
+                  super.create();
+              }
+
+              function select(delta:Int)
+              {
+                  curSelected = (curSelected + delta + entries.length) % entries.length;
+                  for (sprite in items.members)
+                      if (sprite != null) {
+                          sprite.alpha = sprite.ID == curSelected ? 1 : 0.55;
+                          sprite.scale.set(sprite.ID == curSelected ? 1.07 : 1, sprite.ID == curSelected ? 1.07 : 1);
+                      }
+              }
+
+              override function update(elapsed:Float)
+              {
+                  if (!busy)
+                  {
+                      if (controls.UI_UP_P) select(-1);
+                      if (controls.UI_DOWN_P) select(1);
+                      if (controls.BACK) MusicBeatState.switchState(new TitleState());
+                      if (controls.ACCEPT)
+                      {
+                          busy = true;
+                          switch (entries[curSelected])
+                          {
+                              case 'story': MusicBeatState.switchState(new StoryMenuState());
+                              case 'freeplay': MusicBeatState.switchState(new FreeplayState());
+                              case 'credits': MusicBeatState.switchState(new CreditsState());
+                              case 'settings': MusicBeatState.switchState(new options.OptionsState());
+                          }
+                      }
+                  }
+                  super.update(elapsed);
+              }
+          }
+          """, encoding="utf-8")
+          # Original mod has no structured contributor credits manifest.
+          # Retain engine's complete CreditsState, rather than invent names.
+          print("SNS title branding and animated original-art main menu installed; engine credits preserved.")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "SNS menu integration failed" }
+
       - name: Compile Windows game
         shell: pwsh
         working-directory: engine
