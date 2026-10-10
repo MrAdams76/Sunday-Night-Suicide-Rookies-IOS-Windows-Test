@@ -125,6 +125,39 @@ jobs:
             Write-Host "Chart present: $song"
           }
 
+      - name: Apply Windows compatibility patches
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+
+          root = Path("engine")
+          project = root / "Project.xml"
+          xml = project.read_text(encoding="utf-8-sig")
+          # The upstream VLC video handler is absent on this Windows build.
+          # Disable only the video feature to keep PlayState compiling.
+          original = '<define name="VIDEOS_ALLOWED" if="windows || linux || android" unless="32bits"/>'
+          replacement = '<!-- Windows test: VIDEOS_ALLOWED disabled (missing vlc.MP4Handler) -->'
+          if original not in xml:
+              raise RuntimeError("Expected VIDEOS_ALLOWED definition not found")
+          xml = xml.replace(original, replacement, 1)
+          project.write_text(xml, encoding="utf-8")
+
+          sound = root / "source/flixel/system/FlxSound.hx"
+          src = sound.read_text(encoding="utf-8-sig")
+          # The bundled FlxSound uses an OpenFL-private SoundChannel.__source
+          # field which is absent in the installed OpenFL version. Preserve
+          # standard soundTransform updates, omit only unsupported pitch hack.
+          pattern = r'(?ms)^\s*\@:privateAccess\s*\n\s*if\(_channel\.__source != null\)\s*\{.*?\n\s*\}'
+          patched, count = re.subn(pattern, '\n            // Windows test: private SoundChannel pitch backend disabled', src, count=1)
+          if count != 1:
+              raise RuntimeError("Could not locate incompatible FlxSound pitch block")
+          sound.write_text(patched, encoding="utf-8")
+          print("Windows compatibility patches applied")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "Windows compatibility patch failed" }
+
       - name: Compile Windows game
         shell: pwsh
         working-directory: engine
