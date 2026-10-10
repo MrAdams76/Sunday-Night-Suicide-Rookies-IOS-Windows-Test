@@ -86,7 +86,16 @@ jobs:
           $xml = [regex]::Replace($xml, '(<app\s+title=)(["''][^"'']*["''])', '$1"Sunday Night Suicide Rookies Windows Test"')
           if (-not $xml.Contains('</project>')) { throw "Unexpected Project.xml format" }
           $xml = $xml.Replace('</project>', '  <assets path="mods/Sunday-Night-Suicide" rename="mods/Sunday-Night-Suicide" embed="false" />' + "`n</project>")
-          Set-Content $project $xml
+          # Keep UTF-8 encoding and validate the *actual* generated project.
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) $project), $xml, (New-Object System.Text.UTF8Encoding($false)))
+          # Print targeted diagnostics if Lime rejects this XML again.
+          # Lime permits namespace-like asset tags that a generic XML parser does not.
+          python -c "import pathlib,re,xml.etree.ElementTree as ET; p=pathlib.Path('engine/Project.xml'); s=p.read_text(encoding='utf-8-sig'); s=re.sub(r'<(/?)([A-Za-z][\\w-]*):([A-Za-z][\\w-]*)',r'<\\1\\2_\\3',s); ET.fromstring(s); print('Project.xml passes XML well-formedness check')"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Project.xml first 45 lines:"
+            Get-Content $project -TotalCount 45
+            throw "Project.xml syntax invalid before Lime build"
+          }
           foreach ($song in @('melancholy', 'twisted', 'lunacy', 'smile')) {
             $chart = "engine/mods/Sunday-Night-Suicide/data/$song/$song.json"
             if (-not (Test-Path $chart)) { throw "Missing chart: $chart" }
