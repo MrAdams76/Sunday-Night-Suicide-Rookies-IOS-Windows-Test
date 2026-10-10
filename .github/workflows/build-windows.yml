@@ -152,6 +152,28 @@ jobs:
           xml = xml.replace(original, replacement, 1)
           project.write_text(xml, encoding="utf-8")
 
+          # Preserve DiscordClient's public API for callers, but replace the
+          # optional Discord native integration with a Windows-test no-op.
+          discord = root / "source/Discord.hx"
+          discord.write_text("""package;
+          #if desktop
+          class DiscordClient {
+              public static var isInitialized:Bool = false;
+              public function new() {}
+              public static function initialize():Void { isInitialized = true; }
+              public static function shutdown():Void { isInitialized = false; }
+              public static function changePresence(details:String, state:Null<String>, ?smallImageKey:String, ?hasStartTimestamp:Bool, ?endTimestamp:Float):Void {}
+              #if LUA_ALLOWED
+              public static function addLuaCallbacks(lua:llua.State):Void {
+                  Lua_helper.add_callback(lua, "changePresence", function(details:String, state:Null<String>, ?smallImageKey:String, ?hasStartTimestamp:Bool, ?endTimestamp:Float) {
+                      changePresence(details, state, smallImageKey, hasStartTimestamp, endTimestamp);
+                  });
+              }
+              #end
+          }
+          #end
+          """, encoding="utf-8")
+
           sound = root / "source/flixel/system/FlxSound.hx"
           src = sound.read_text(encoding="utf-8-sig")
           # The bundled FlxSound uses an OpenFL-private SoundChannel.__source
