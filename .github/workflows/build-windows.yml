@@ -78,6 +78,48 @@ jobs:
           python ios-source/scripts/stage_sns_mod.py mod-download/SNS-mobile-assets.zip engine
           if ($LASTEXITCODE -ne 0) { throw "SNS asset staging failed" }
 
+      - name: Normalize SNS mod layout and audit original gameplay effects
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import json, shutil, re
+          root = Path("engine/mods/Sunday-Night-Suicide")
+          nested = root / "Sunday-Night-Suicide"
+          if nested.exists():
+              # The release archive includes a second complete mod tree. The
+              # runtime must see exactly one canonical mods/<name>/ tree.
+              print("Removing duplicated SNS mod subtree:", nested)
+              shutil.rmtree(nested)
+          assert not nested.exists(), "Duplicate mod tree survived cleanup"
+          # Preserve original song Lua scripts. Psych Engine loads
+          # mods/<active>/data/<song>/script.lua when LUA_ALLOWED is enabled.
+          for song in ("melancholy", "twisted", "lunacy", "smile"):
+              p = root / "data" / song / "script.lua"
+              if not p.is_file():
+                  raise RuntimeError(f"Missing original {song} Lua script: {p}")
+              print(f"Original Lua script available: {p} ({p.stat().st_size} bytes)")
+          twisted = (root / "data/twisted/script.lua").read_text(encoding="utf-8-sig")
+          lunacy = (root / "data/lunacy/script.lua").read_text(encoding="utf-8-sig")
+          for token in ("headshot", "head", "doTween", "setObjectCamera"):
+              if token not in twisted:
+                  raise RuntimeError(f"Twisted cinematic instruction missing: {token}")
+          for token in ("initLuaShader", "setSpriteShader", "camHUD", "camGame"):
+              if token not in lunacy:
+                  raise RuntimeError(f"Lunacy shader/camera instruction missing: {token}")
+          for relative in ("images/headshot.png", "shaders/color.frag",
+                           "custom_events/Cinematics.lua"):
+              if not (root / relative).is_file():
+                  raise RuntimeError(f"Missing cinematic resource: {relative}")
+          shader = (root / "shaders/color.frag").read_text(encoding="utf-8-sig")
+          for uniform in ("a", "b", "c"):
+              if not re.search(r"uniform\\s+float\\s+" + uniform + r"\\s*[;=]", shader):
+                  raise RuntimeError(f"Missing original color shader uniform {uniform}")
+          print("Twisted head asset/tween commands, Lunacy shader/camera commands and uniforms verified")
+          print("NOTE: Static audit only; in-game Lua execution, camera layering and timings need gameplay verification.")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "SNS effect audit failed" }
+
       - name: Configure desktop mod and check charts
         shell: pwsh
         run: |
@@ -263,6 +305,8 @@ jobs:
           $target = Join-Path $bin 'mods/Sunday-Night-Suicide'
           if (-not (Test-Path $source)) { throw "Staged SNS mod missing: $source" }
           if (-not (Test-Path $bin)) { throw "Compiled Windows bin missing: $bin" }
+          if (Test-Path (Join-Path $source 'Sunday-Night-Suicide')) { throw "Nested duplicate mod directory detected before packaging" }
+          if (Test-Path $target) { Remove-Item $target -Recurse -Force }
           New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
           Copy-Item -Path $source -Destination $target -Recurse -Force
           # Psych Engine loads mods from the executable's working directory.
@@ -279,6 +323,12 @@ jobs:
             $chart = Join-Path $target "data/$song/$song.json"
             if (-not (Test-Path $chart)) { throw "Packaged chart missing: $chart" }
           }
+          if (Test-Path (Join-Path $target 'Sunday-Night-Suicide')) { throw "Duplicate mod tree was packaged" }
+          foreach ($song in @('melancholy','twisted','lunacy','smile')) {
+            if (-not (Test-Path (Join-Path $target "data/$song/script.lua"))) { throw "Lua script missing from packaged build: $song" }
+          }
+          if (-not (Test-Path (Join-Path $target 'images/headshot.png'))) { throw "Twisted headshot asset missing" }
+          if (-not (Test-Path (Join-Path $target 'shaders/color.frag'))) { throw "Lunacy color shader missing" }
           $weeks = @(Get-ChildItem (Join-Path $target 'weeks') -Filter '*.json' -ErrorAction Stop)
           if ($weeks.Count -eq 0) { throw "Packaged SNS week definitions missing" }
           Write-Host "Packaged enabled SNS mod with $($weeks.Count) week definitions into $bin"
