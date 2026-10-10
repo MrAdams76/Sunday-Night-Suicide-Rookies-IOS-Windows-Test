@@ -554,9 +554,14 @@ jobs:
           mod = root / "mods/Sunday-Night-Suicide"
           play = root / "source/PlayState.hx"
           code = play.read_text(encoding="utf-8-sig")
-          marker = "switch (curStage)"
-          if code.count(marker) != 1:
-              raise RuntimeError("PlayState stage switch anchor changed")
+          import re
+          # Some upstream revisions contain more than one stage switch.
+          # Target the actual switch whose first case is the stock 'stage'.
+          match = re.search(r"switch\\s*\\(curStage\\)\\s*\\{\\s*case\\s+'stage'", code)
+          if not match:
+              raise RuntimeError("Could not locate the stock PlayState stage switch")
+          switch_anchor = match.group(0)
+          switch_anchor = switch_anchor[:switch_anchor.index("case")]
           # Song charts map Melancholy, Twisted and Lunacy to 'alley',
           # and Smile to 'randy'. Keep that mapping intact.
           cases = """
@@ -577,9 +582,6 @@ jobs:
                         "stages/road/road", "stages/road/shadows"):
               if not (mod / ("images/" + asset + ".png")).is_file():
                   raise RuntimeError("Missing original stage art: " + asset)
-          switch_anchor = marker + chr(10) + chr(9) + chr(9) + "{"
-          if switch_anchor not in code:
-              raise RuntimeError("PlayState stage switch opening changed")
           code = code.replace(switch_anchor, switch_anchor + cases, 1)
           if "case 'randy':" not in code:
               raise RuntimeError("Failed to register Lunacy stage")
