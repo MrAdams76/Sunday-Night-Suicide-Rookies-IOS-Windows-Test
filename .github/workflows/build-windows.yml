@@ -135,6 +135,14 @@ jobs:
           root = Path("engine")
           project = root / "Project.xml"
           xml = project.read_text(encoding="utf-8-sig")
+          # Discord Rich Presence is optional for this offline test build.
+          # The published discord_rpc haxelib lacks its bundled native header.
+          # Remove the library entry and disable desktop RPC code paths.
+          discord_lib = '<haxelib name="discord_rpc" if="desktop"/>'
+          if discord_lib not in xml:
+              raise RuntimeError("Expected discord_rpc haxelib entry not found")
+          xml = xml.replace(discord_lib, '<!-- Windows test: optional Discord RPC disabled -->', 1)
+          xml = xml.replace('<define name="DISCORD_ALLOWED"', '<define name="DISCORD_DISABLED"')
           # The upstream VLC video handler is absent on this Windows build.
           # Disable only the video feature to keep PlayState compiling.
           original = '<define name="VIDEOS_ALLOWED" if="windows || linux || android" unless="32bits"/>'
