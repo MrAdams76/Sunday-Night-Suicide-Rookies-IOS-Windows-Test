@@ -106,7 +106,7 @@ jobs:
           source = p.read_text(encoding="utf-8-sig")
           # Normalize Lime-specific config:android tags in the validation copy.
           # Use single backslashes in Python raw regexes (not doubled ones).
-          check = re.sub(r'(<\\/?)[A-Za-z_][\\w.-]*:', r'\\1', source)
+          check = source.replace("<config:android", "<config_android").replace("</config:android", "</config_android")
           ET.fromstring(check)
           print("Project.xml passes XML well-formedness check (Lime-specific tag prefixes normalized)")
           '@ | python -
