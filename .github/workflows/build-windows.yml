@@ -58,6 +58,10 @@ jobs:
           haxelib install flixel-addons 2.11.0 --quiet
           haxelib install flixel-ui 2.4.0 --quiet
           haxelib install hscript 2.4.0 --quiet
+          haxelib install hxCodec --quiet
+          if ($LASTEXITCODE -ne 0) { throw "hxCodec installation failed" }
+          haxelib install discord_rpc --quiet
+          if ($LASTEXITCODE -ne 0) { throw "discord_rpc installation failed" }
           haxelib install hxcpp 4.3.2 --quiet
           haxelib set hxcpp 4.3.2
           haxelib git linc_luajit https://github.com/nebulazorua/linc_luajit
