@@ -209,8 +209,14 @@ jobs:
           Copy-Item -Path $source -Destination $target -Recurse -Force
           # Psych Engine loads mods from the executable's working directory.
           # The previous artifact uploaded only bin/** without the staged mod.
-          $modsList = Join-Path $bin 'mods/modsList.txt'
+          # Psych Engine 0.6.3 reads modsList.txt from the GAME ROOT,
+          # not from inside mods/. WeekData and ModsMenuState both use this path.
+          $modsList = Join-Path $bin 'modsList.txt'
           [System.IO.File]::WriteAllText((Join-Path (Get-Location) $modsList), "Sunday-Night-Suicide|1`n", (New-Object System.Text.UTF8Encoding($false)))
+          # Ensure the package contains the enabled-mod manifest at its root.
+          if (-not (Test-Path $modsList)) { throw "Root modsList.txt missing" }
+          Write-Host "Root modsList.txt:"
+          Get-Content $modsList
           foreach ($song in @('melancholy', 'twisted', 'lunacy', 'smile')) {
             $chart = Join-Path $target "data/$song/$song.json"
             if (-not (Test-Path $chart)) { throw "Packaged chart missing: $chart" }
