@@ -602,6 +602,54 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw "SNS scenery/title patch failed" }
 
+      - name: Restore Twisted original laugh and phase transition
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import json
+          mod = Path("engine/mods/Sunday-Night-Suicide")
+          chart_path = mod / "data/twisted/twisted.json"
+          chart = json.loads(chart_path.read_text(encoding="utf-8-sig"))
+          song = chart["song"]
+          assert song["player2"] == "hap-mouse", "Unexpected Twisted first-phase character"
+          laugh_notes = [note for section in song["notes"] for note in section["sectionNotes"]
+                         if len(note) >= 4 and note[3] == "Alt Animation" and 71000 <= note[0] <= 74000]
+          if len(laugh_notes) < 5:
+              raise RuntimeError("Original Twisted laugh notes are missing")
+          character = json.loads((mod / "characters/hap-mouse.json").read_text(encoding="utf-8-sig"))
+          anims = {a["anim"]: a["name"] for a in character["animations"]}
+          if anims.get("singUP-alt") != "Laugh":
+              raise RuntimeError("Original Mickey Laugh animation mapping is missing")
+          phase_events = [(t, e) for t, group in song["events"] for e in group
+                          if e[0] == "Change Character" and e[2] == "happy-mouse"]
+          if not phase_events or abs(phase_events[0][0] - 74181.818) > 20:
+              raise RuntimeError("Twisted second-phase character event is missing")
+          lua = (mod / "data/twisted/script.lua").read_text(encoding="utf-8-sig")
+          for token in ("[528]", "[544]", "cameraFlash", "headshot", "doTweenZoom"):
+              if token not in lua:
+                  raise RuntimeError("Original Twisted cinematic instruction missing: " + token)
+          for asset in ("images/characters/Happy_Mouse.png",
+                        "images/characters/Happy_Mouse.xml",
+                        "images/headshot.png",
+                        "custom_events/Cinematics.lua",
+                        "custom_events/shakey.lua"):
+              if not (mod / asset).is_file():
+                  raise RuntimeError("Original Twisted visual asset missing: " + asset)
+          # The original chart already carries the laugh notes and the phase
+          # change; do not duplicate triggers or modify camera timing.
+          # Add a compatibility alias for engines that use a note-type script
+          # rather than built-in Alt Animation note handling.
+          types = mod / "custom_notetypes"
+          types.mkdir(exist_ok=True)
+          (types / "Alt Animation.lua").write_text("""function onCreate()
+              -- Psych Engine handles Alt Animation note types internally.
+          end
+          """, encoding="utf-8")
+          print("Verified original laugh animation, 72-74s alt notes, 74.18s character switch and Twisted visual assets.")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "Twisted transition validation failed" }
+
       - name: Compile Windows game
         shell: pwsh
         working-directory: engine
