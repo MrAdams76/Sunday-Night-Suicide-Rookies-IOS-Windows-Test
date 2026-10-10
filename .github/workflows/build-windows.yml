@@ -95,7 +95,19 @@ jobs:
           [System.IO.File]::WriteAllText((Join-Path (Get-Location) $project), $xml, (New-Object System.Text.UTF8Encoding($false)))
           # Print targeted diagnostics if Lime rejects this XML again.
           # Lime permits namespace-like asset tags that a generic XML parser does not.
-          python -c "import pathlib,re,xml.etree.ElementTree as ET; p=pathlib.Path('engine/Project.xml'); s=p.read_text(encoding='utf-8-sig'); s=re.sub(r'<(/?)([A-Za-z][\\w-]*):([A-Za-z][\\w-]*)',r'<\\1\\2_\\3',s); ET.fromstring(s); print('Project.xml passes XML well-formedness check')"
+          # Lime's Project.xml allows colon-prefixed tags (e.g. android:*)
+          # without XML namespace declarations. Python's strict parser does not.
+          # Strip those prefixes only in the validation copy, not in the file Lime reads.
+          @'
+          import pathlib
+          import re
+          import xml.etree.ElementTree as ET
+          p = pathlib.Path("engine/Project.xml")
+          source = p.read_text(encoding="utf-8-sig")
+          check = re.sub(r'(<\\/?)[A-Za-z_][\\w.-]*:', r'\\1', source)
+          ET.fromstring(check)
+          print("Project.xml passes XML well-formedness check (Lime-specific tag prefixes normalized)")
+          '@ | python -
           if ($LASTEXITCODE -ne 0) {
             Write-Host "Project.xml first 45 lines:"
             Get-Content $project -TotalCount 45
