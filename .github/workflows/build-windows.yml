@@ -557,20 +557,24 @@ jobs:
           marker = "switch (curStage)"
           if code.count(marker) != 1:
               raise RuntimeError("PlayState stage switch anchor changed")
+          # Song charts map Melancholy, Twisted and Lunacy to 'alley',
+          # and Smile to 'randy'. Keep that mapping intact.
           cases = """
+              case 'alley':
+                  add(new BGSprite('stages/road/bg', -950, -500, 0.8, 0.8));
+                  add(new BGSprite('stages/road/buildings', -950, -500, 0.85, 0.85));
+                  add(new BGSprite('stages/road/road', -950, -200, 1, 1));
+                  add(new BGSprite('stages/road/shadows', -950, -200, 1, 1));
               case 'randy':
-                  // Original Lunacy scenery: draw behind characters.
                   add(new BGSprite('stages/randy/sky', -950, -700, 0.4, 0.4));
                   add(new BGSprite('stages/randy/road', -950, -200, 0.9, 0.9));
                   add(new BGSprite('stages/randy/fence', -950, -200, 0.9, 0.9));
                   add(new BGSprite('stages/randy/streetlamp', -950, -200, 0.9, 0.9));
-              case 'alley':
-                  add(new BGSprite('stages/road/bg', -950, -500, 0.8, 0.8));
-                  add(new BGSprite('stages/road/road', -950, -200, 1, 1));
           """
           for asset in ("stages/randy/sky", "stages/randy/road",
                         "stages/randy/fence", "stages/randy/streetlamp",
-                        "stages/road/bg", "stages/road/road"):
+                        "stages/road/bg", "stages/road/buildings",
+                        "stages/road/road", "stages/road/shadows"):
               if not (mod / ("images/" + asset + ".png")).is_file():
                   raise RuntimeError("Missing original stage art: " + asset)
           switch_anchor = marker + chr(10) + chr(9) + chr(9) + "{"
