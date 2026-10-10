@@ -83,7 +83,12 @@ jobs:
           # Mirror the validated iOS build's fps=60 normalization.
           if (-not $xml.Contains('fps=""')) { throw "Expected upstream empty fps attribute was not found" }
           $xml = $xml.Replace('fps=""', 'fps="60"')
-          $xml = [regex]::Replace($xml, '(<app\s+title=)(["''][^"'']*["''])', '$1"Sunday Night Suicide Rookies Windows Test"')
+          # Replace the complete title attribute. The upstream title contains
+          # an apostrophe (Funkin'), so a regex accepting either quote as a
+          # terminator corrupts the XML by leaving ': Psych Engine' behind.
+          $titlePattern = '(<app\s+title=)"[^"]*"'
+          $xml = [regex]::Replace($xml, $titlePattern, '$1"Sunday Night Suicide Rookies Windows Test"', [System.Text.RegularExpressions.RegexOptions]::None)
+          if ($xml -notmatch '<app title="Sunday Night Suicide Rookies Windows Test" file=') { throw "Could not safely replace app title" }
           if (-not $xml.Contains('</project>')) { throw "Unexpected Project.xml format" }
           $xml = $xml.Replace('</project>', '  <assets path="mods/Sunday-Night-Suicide" rename="mods/Sunday-Night-Suicide" embed="false" />' + "`n</project>")
           # Keep UTF-8 encoding and validate the *actual* generated project.
