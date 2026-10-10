@@ -573,7 +573,10 @@ jobs:
                         "stages/road/bg", "stages/road/road"):
               if not (mod / ("images/" + asset + ".png")).is_file():
                   raise RuntimeError("Missing original stage art: " + asset)
-          code = code.replace(marker + "\\n\\t\\t{", marker + "\\n\\t\\t{" + cases, 1)
+          switch_anchor = marker + chr(10) + chr(9) + chr(9) + "{"
+          if switch_anchor not in code:
+              raise RuntimeError("PlayState stage switch opening changed")
+          code = code.replace(switch_anchor, switch_anchor + cases, 1)
           if "case 'randy':" not in code:
               raise RuntimeError("Failed to register Lunacy stage")
           play.write_text(code, encoding="utf-8")
@@ -583,16 +586,13 @@ jobs:
           src = title.read_text(encoding="utf-8-sig")
           start = "override public function create():Void"
           if src.count(start) != 1: raise RuntimeError("TitleState create anchor changed")
-          src = src.replace(start, start + """
-          {
+          brace = start + chr(10) + chr(9) + "{"
+          if brace not in src: raise RuntimeError("TitleState create opening changed")
+          src = src.replace(brace, brace + """
               #if windows
               Paths.currentModDirectory = 'Sunday-Night-Suicide';
               #end
           """, 1)
-          # Keep a single create method opening brace.
-          src = src.replace("""          #end
-          
-          {""", """          #end""", 1)
           title.write_text(src, encoding="utf-8")
           print("SNS stage scenery and title asset directory patched")
           '@ | python -
