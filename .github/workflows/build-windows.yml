@@ -157,7 +157,8 @@ jobs:
           discord = root / "source/Discord.hx"
           discord.write_text("""package;
           #if desktop
-          import llua.Lua_helper;
+          import llua.Lua;
+          import llua.State;
           class DiscordClient {
               public static var isInitialized:Bool = false;
               public function new() {}
