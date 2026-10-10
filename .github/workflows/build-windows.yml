@@ -557,11 +557,12 @@ jobs:
           import re
           # Some upstream revisions contain more than one stage switch.
           # Target the actual switch whose first case is the stock 'stage'.
-          match = re.search(r"switch\\s*\\(curStage\\)\\s*\\{\\s*case\\s+'stage'", code)
+          # The upstream switch uses a newline and tabs before case 'stage'.
+          # Match the opening brace only, then check its first case separately.
+          match = re.search(r"switch\\s*\\(curStage\\)\\s*\\{(?=\\s*case\\s+['\\\"]stage['\\\"])", code)
           if not match:
               raise RuntimeError("Could not locate the stock PlayState stage switch")
           switch_anchor = match.group(0)
-          switch_anchor = switch_anchor[:switch_anchor.index("case")]
           # Song charts map Melancholy, Twisted and Lunacy to 'alley',
           # and Smile to 'randy'. Keep that mapping intact.
           cases = """
