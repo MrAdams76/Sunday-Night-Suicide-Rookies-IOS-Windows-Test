@@ -104,6 +104,8 @@ jobs:
           import xml.etree.ElementTree as ET
           p = pathlib.Path("engine/Project.xml")
           source = p.read_text(encoding="utf-8-sig")
+          # Normalize Lime-specific config:android tags in the validation copy.
+          # Use single backslashes in Python raw regexes (not doubled ones).
           check = re.sub(r'(<\\/?)[A-Za-z_][\\w.-]*:', r'\\1', source)
           ET.fromstring(check)
           print("Project.xml passes XML well-formedness check (Lime-specific tag prefixes normalized)")
