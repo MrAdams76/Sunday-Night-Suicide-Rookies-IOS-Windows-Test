@@ -197,6 +197,29 @@ jobs:
           haxelib run lime build windows -release
           if ($LASTEXITCODE -ne 0) { throw "Windows build failed" }
 
+      - name: Package enabled SNS mod beside Windows executable
+        shell: pwsh
+        run: |
+          $bin = 'engine/export/release/windows/bin'
+          $source = 'engine/mods/Sunday-Night-Suicide'
+          $target = Join-Path $bin 'mods/Sunday-Night-Suicide'
+          if (-not (Test-Path $source)) { throw "Staged SNS mod missing: $source" }
+          if (-not (Test-Path $bin)) { throw "Compiled Windows bin missing: $bin" }
+          New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
+          Copy-Item -Path $source -Destination $target -Recurse -Force
+          # Psych Engine loads mods from the executable's working directory.
+          # The previous artifact uploaded only bin/** without the staged mod.
+          $modsList = Join-Path $bin 'mods/modsList.txt'
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) $modsList), "Sunday-Night-Suicide|1`n", (New-Object System.Text.UTF8Encoding($false)))
+          foreach ($song in @('melancholy', 'twisted', 'lunacy', 'smile')) {
+            $chart = Join-Path $target "data/$song/$song.json"
+            if (-not (Test-Path $chart)) { throw "Packaged chart missing: $chart" }
+          }
+          $weeks = @(Get-ChildItem (Join-Path $target 'weeks') -Filter '*.json' -ErrorAction Stop)
+          if ($weeks.Count -eq 0) { throw "Packaged SNS week definitions missing" }
+          Write-Host "Packaged enabled SNS mod with $($weeks.Count) week definitions into $bin"
+          Write-Host "Extract the full artifact ZIP before launching the executable."
+
       - name: Upload Windows game ZIP
         uses: actions/upload-artifact@v4
         with:
