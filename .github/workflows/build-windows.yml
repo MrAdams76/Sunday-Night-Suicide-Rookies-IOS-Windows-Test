@@ -1,0 +1,94 @@
+name: Build Windows Test Game
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout Windows test repository
+        uses: actions/checkout@v4
+
+      - name: Check access to private iOS source
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.SNS_SOURCE_TOKEN }}
+        run: |
+          if (-not $env:GH_TOKEN) { throw "Missing SNS_SOURCE_TOKEN secret. Add a GitHub token with Contents: Read access to the private iOS repository." }
+          gh auth status
+
+      - name: Checkout shared iOS project scripts
+        uses: actions/checkout@v4
+        with:
+          repository: MrAdams76/Sunday-Night-Suicide-Rookies-IOS-
+          ref: claude/ios-camera-touch-shader-fixes
+          token: ${{ secrets.SNS_SOURCE_TOKEN }}
+          path: ios-source
+
+      - name: Checkout Psych Engine
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/DaffyToons/FNF-PsychEngine-0.6.3-Mobile.git engine
+          if ($LASTEXITCODE -ne 0) { throw "Psych Engine checkout failed" }
+
+      - name: Install Haxe toolchain
+        shell: pwsh
+        run: |
+          choco install haxe --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "Haxe installation failed" }
+          $env:PATH = "C:\ProgramData\chocolatey\bin;$env:PATH"
+          haxe --version
+          haxelib setup "$env:USERPROFILE\haxelib"
+          haxelib install lime 8.2.2 --quiet
+          haxelib install openfl 9.4.1 --quiet
+          haxelib install flixel 4.11.0 --quiet
+          haxelib install flixel-addons 2.11.0 --quiet
+          haxelib install flixel-ui 2.4.0 --quiet
+          haxelib install hscript 2.4.0 --quiet
+          haxelib install hxcpp 4.3.2 --quiet
+          haxelib set hxcpp 4.3.2
+          haxelib git linc_luajit https://github.com/nebulazorua/linc_luajit
+          if ($LASTEXITCODE -ne 0) { throw "LuaJIT dependency failed" }
+
+      - name: Download original SNS mod assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.SNS_SOURCE_TOKEN }}
+        run: |
+          New-Item -ItemType Directory -Force mod-download | Out-Null
+          gh release download sns-ios-assets-v1 --repo MrAdams76/Sunday-Night-Suicide-Rookies-IOS- --pattern SNS-mobile-assets.zip --dir mod-download --clobber
+          if ($LASTEXITCODE -ne 0) { throw "SNS asset download failed" }
+          python ios-source/scripts/stage_sns_mod.py mod-download/SNS-mobile-assets.zip engine
+          if ($LASTEXITCODE -ne 0) { throw "SNS asset staging failed" }
+
+      - name: Configure desktop mod and check charts
+        shell: pwsh
+        run: |
+          $project = 'engine/Project.xml'
+          $xml = Get-Content $project -Raw
+          $xml = [regex]::Replace($xml, '(<app\s+title=)(["''][^"'']*["''])', '$1"Sunday Night Suicide Rookies Windows Test"')
+          if (-not $xml.Contains('</project>')) { throw "Unexpected Project.xml format" }
+          $xml = $xml.Replace('</project>', '  <assets path="mods/Sunday-Night-Suicide" rename="mods/Sunday-Night-Suicide" embed="false" />' + "`n</project>")
+          Set-Content $project $xml
+          foreach ($song in @('melancholy', 'twisted', 'lunacy', 'smile')) {
+            $chart = "engine/mods/Sunday-Night-Suicide/data/$song/$song.json"
+            if (-not (Test-Path $chart)) { throw "Missing chart: $chart" }
+            Write-Host "Chart present: $song"
+          }
+
+      - name: Compile Windows game
+        shell: pwsh
+        working-directory: engine
+        run: |
+          haxelib run lime build windows -release
+          if ($LASTEXITCODE -ne 0) { throw "Windows build failed" }
+
+      - name: Upload Windows game ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SNS-Rookies-Windows-Test
+          path: engine/export/release/windows/bin/**
+          if-no-files-found: error
+          retention-days: 14
