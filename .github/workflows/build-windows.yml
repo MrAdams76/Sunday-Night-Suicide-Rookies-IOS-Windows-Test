@@ -504,6 +504,47 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw "SNS menu integration failed" }
 
+      - name: Validate original SNS characters, music, backgrounds and cinematic effects
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import json, xml.etree.ElementTree as ET
+          mod = Path("engine/mods/Sunday-Night-Suicide")
+          required = [
+              "images/logo-sns.png", "images/titleEnter.png", "images/titleEnter.xml",
+              "images/mainmenu/fire.png", "images/mainmenu/fire.xml",
+              "images/mainmenu/story.png", "images/mainmenu/freeplay.png",
+              "images/mainmenu/credits.png", "images/mainmenu/settings.png",
+              "images/menubackgrounds/menu_alley.png",
+              "images/menucharacters/Menu_Sunny.png",
+              "images/credits/azuwure.png",
+              "shaders/color.frag", "custom_events/Cinematics.lua",
+              "music/freakyMenu.ogg"
+          ]
+          for song in ("melancholy", "twisted", "lunacy", "smile"):
+              required += [f"songs/{song}/Inst.ogg", f"songs/{song}/Voices.ogg",
+                           f"data/{song}/{song}.json", f"data/{song}/script.lua"]
+          for name in required:
+              file = mod / name
+              if not file.is_file() or file.stat().st_size == 0:
+                  raise RuntimeError("Missing original SNS asset: " + name)
+          for name in ("titleEnter", "mainmenu/fire"):
+              atlas = ET.parse(mod / ("images/" + name + ".xml")).getroot()
+              frames = [el.attrib.get("name", "") for el in atlas.iter("SubTexture")]
+              if not frames: raise RuntimeError("Original animation atlas has no frames: " + name)
+              print(name, "animation frames:", len(frames), "sample:", frames[:3])
+          characters = list((mod / "images/characters").glob("*.png"))
+          if len(characters) < 4: raise RuntimeError("SNS character spritesheets not staged")
+          stages = list((mod / "images/stages").rglob("*.png"))
+          if not stages: raise RuntimeError("SNS stage backgrounds not staged")
+          credits = list((mod / "images/credits").glob("*.png"))
+          if len(credits) < 5: raise RuntimeError("SNS contributor portrait sprites missing")
+          print(f"Original SNS assets ready: {len(characters)} character sheets, {len(stages)} stage images, {len(credits)} credits portraits")
+          print("Cinematic flash/shader assets staged. Actual shader execution and flashing remain runtime-dependent; respect user flashing settings.")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "Original SNS asset validation failed" }
+
       - name: Compile Windows game
         shell: pwsh
         working-directory: engine
