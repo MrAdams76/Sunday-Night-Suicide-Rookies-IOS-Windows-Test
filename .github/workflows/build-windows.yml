@@ -113,7 +113,7 @@ jobs:
                   raise RuntimeError(f"Missing cinematic resource: {relative}")
           shader = (root / "shaders/color.frag").read_text(encoding="utf-8-sig")
           for uniform in ("a", "b", "c"):
-              if not re.search(r"uniform\\s+float\\s+" + uniform + r"\\s*[;=]", shader):
+              if not re.search(r"uniform\s+float\s+" + uniform + r"\s*[;=]", shader):
                   raise RuntimeError(f"Missing original color shader uniform {uniform}")
           print("Twisted head asset/tween commands, Lunacy shader/camera commands and uniforms verified")
           print("NOTE: Static audit only; in-game Lua execution, camera layering and timings need gameplay verification.")
