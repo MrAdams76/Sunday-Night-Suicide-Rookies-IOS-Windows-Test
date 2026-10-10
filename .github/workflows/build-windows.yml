@@ -290,6 +290,69 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw "SNS week integration failed" }
 
+      - name: Make SNS the exclusive Windows game and prevent Freeplay crash
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import json
+          root = Path("engine")
+          mod = root / "mods/Sunday-Night-Suicide"
+          # The upstream WeekData loads stock week1/week2 first, which shadows
+          # SNS week1/week2 by ID. The later fallback cannot replace them.
+          # Short-circuit discovery on Windows with SNS-only weeks.
+          week = root / "source/WeekData.hx"
+          src = week.read_text(encoding="utf-8-sig")
+          anchor = "weeksLoaded.clear();"
+          if src.count(anchor) != 1:
+              raise RuntimeError("WeekData reset anchor changed")
+          inject = """
+                  #if windows
+                  // SNS Windows standalone: never register stock FNF weeks.
+                  var snsDirectory:String = Paths.mods("Sunday-Night-Suicide/");
+                  var snsWeekDirectory:String = snsDirectory + "weeks/";
+                  if (!FileSystem.exists(snsWeekDirectory))
+                      throw "SNS weeks missing: " + snsWeekDirectory;
+                  for (snsId in ["week1", "week2"])
+                  {
+                      var snsPath:String = snsWeekDirectory + snsId + ".json";
+                      if (!FileSystem.exists(snsPath)) throw "SNS week missing: " + snsPath;
+                      var snsWeek:WeekFile = getWeekFile(snsPath);
+                      if (snsWeek == null) throw "SNS invalid week: " + snsPath;
+                      var snsData:WeekData = new WeekData(snsWeek, snsId);
+                      snsData.folder = "Sunday-Night-Suicide";
+                      if ((isStoryMode == null) ||
+                          (isStoryMode && !snsData.hideStoryMode) ||
+                          (!isStoryMode && !snsData.hideFreeplay))
+                      {
+                          weeksLoaded.set(snsId, snsData);
+                          weeksList.push(snsId);
+                      }
+                  }
+                  trace("SNS standalone weeks: " + weeksList.join(","));
+                  return;
+                  #end
+          """
+          src = src.replace(anchor, anchor + inject, 1)
+          week.write_text(src, encoding="utf-8")
+          # The engine must use the mod directory before resolving title/menu art.
+          # It is normally set from modsList.txt, but also enforce it on desktop.
+          title = root / "source/TitleState.hx"
+          code = title.read_text(encoding="utf-8-sig")
+          # Leave original title animation logic intact; mod art resolution is
+          # handled by Paths.currentModDirectory and the staged logo/title assets.
+          print("SNS-only WeekData installed; title state preserved for animation")
+          # Validate all four songs and ensure stock song IDs aren't in SNS weeks.
+          names = []
+          for file in ("week1.json", "week2.json"):
+              data = json.loads((mod / "weeks" / file).read_text(encoding="utf-8-sig"))
+              names.extend(str(entry[0]).lower() for entry in data["songs"])
+          if sorted(names) != sorted(["melancholy", "twisted", "lunacy", "smile"]):
+              raise RuntimeError("SNS weeks do not contain exactly the four requested songs: " + str(names))
+          print("SNS-only Freeplay catalog:", names)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "SNS standalone Freeplay patch failed" }
+
       - name: Compile Windows game
         shell: pwsh
         working-directory: engine
